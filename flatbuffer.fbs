@@ -1,0 +1,64 @@
+
+enum Direction: byte {
+    Server2Client,
+    Client2Server
+}
+
+//why cant I have the [byte] be a specific size in tables **why**
+struct FlatbufferMoment {
+    d: [byte:255];
+}
+
+//all our packet types
+
+//Put data in the server
+table TryPut {//C2S
+    pattern: string;
+    nbt: [byte];
+}
+table PutSuccess {//S2C
+    password: FlatbufferMoment;
+}
+
+//Get Data from Server
+table TryGet {//C2S
+    pattern: string;
+}
+table GetSuccess {//S2C
+    nbt: [byte];
+}
+
+//Delete Data from server
+table TryDelete {
+    pattern: string;
+    password: FlatbufferMoment;
+}
+table DeleteSuccess {}
+
+
+//Failed to process interaction
+table ErrorResponse { //S2C
+    id: ushort;
+    other: string;//json
+}
+
+//all valid packet types
+union PacketData {
+    TryPut,PutSuccess,
+    TryGet,GetSuccess,
+    TryDelete,DeleteSuccess,
+    ErrorResponse
+}
+
+table Packet {
+    direction: Direction;
+    data: PacketData;
+}
+
+
+table Messages {
+    version: short;
+    packets: [Packet];
+}
+
+root_type Messages;
