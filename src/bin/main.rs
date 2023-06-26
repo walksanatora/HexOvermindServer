@@ -3,7 +3,10 @@ mod flatbuffer;
 
 //use base64::{engine::general_purpose::STANDARD as b64, Engine};
 use dotenv::dotenv;
-use quartz_nbt::{NbtCompound, NbtList, NbtTag};
+use quartz_nbt::{
+    io::{read_nbt, write_nbt, Flavor},
+    NbtCompound, NbtList, NbtTag,
+};
 use rand::Rng;
 use sqlx::{mysql::MySqlPool, query};
 use std::env;
@@ -25,6 +28,54 @@ fn generate_random_sig() -> String {
         });
     }
     output
+}
+
+fn generate_random_iota() -> NbtCompound {
+    let mut rng = rand::thread_rng();
+    let result: u8 = rng.gen_range(1..=100);
+    let mut tag = NbtCompound::new();
+    println!("rng rolled a {}", result);
+    match result {
+        0..=10 => {
+            tag.insert("hexcasting:type", "hexcasting:list");
+            let mut list = NbtList::new();
+            for _ in 0..rng.gen_range(1..=4) {
+                list.push(generate_random_iota());
+            }
+            tag.insert("hexcasting:data", list);
+        }
+        11..=30 => {
+            tag.insert("hexcasting:type", "hexcasting:null");
+            tag.insert("hexcasting:data", NbtCompound::new());
+        }
+        31..=50 => {
+            tag.insert("hexcasting:type", "hexcasting:garbage");
+            tag.insert("hexcasting:data", NbtCompound::new());
+        }
+        51..=70 => {
+            tag.insert("hexcasting:type", "hexcasting:double");
+            tag.insert(
+                "hexcasting:data",
+                NbtTag::Double(rng.gen_range(-100.0..100.0)),
+            )
+        }
+        71..=95 => {
+            //{name: '{"text":"walksanator"}', uuid: [I; 1583201733, 245647309, -1159122008, 372905589]}
+            let mut data = NbtCompound::new();
+            data.insert("name", "{\"text\":\"walksanator\"}");
+            data.insert("uuid", vec![1583201733, 245647309, -1159122008, 372905589]);
+            tag.insert("hexcasting:data", data);
+            tag.insert("hexcasting:type", "hexcasting:entity")
+        }
+        96.. => {
+            tag.insert("hexcasting:type", "hexcasting:list");
+            let mut list = NbtList::new();
+            for _ in 0..rng.gen_range(1..=4) {
+                list.push(generate_random_iota());
+            }
+        }
+    }
+    tag
 }
 
 fn sanatize_nbt(tag: &NbtTag) -> NbtTag {
@@ -137,13 +188,21 @@ async fn main() {
     }
 
     let mut rng = rand::thread_rng();
-    let datum = rng.gen::<[u8; 32]>();
     let mut password = [0u8; 255];
     rng.fill(&mut password);
+
+    let rand_iota: NbtCompound = sanatize_nbt(&NbtTag::Compound(generate_random_iota()))
+        .try_into()
+        .unwrap();
+    let mut bytes = vec![];
+    let res = write_nbt(&mut bytes, None, &rand_iota, Flavor::Uncompressed);
+    if let Err(ohno) = res {
+        panic!("failed to write nbt, {}", ohno);
+    }
     let insert = query!(
         "INSERT INTO HexDataStorage (Pattern, Data, Password, Deletion) VALUES (?,?,?,?);",
         generate_random_sig(),
-        datum.as_ref(),
+        bytes.as_slice(),
         password.as_ref(),
         time::OffsetDateTime::now_utc() + time::Duration::HOUR
     )
@@ -161,6 +220,17 @@ async fn main() {
             "pattern: {}\nto be deleted at: {}\n",
             record.Pattern, record.Deletion
         );
+        #[cfg(debug_assertions)]
+        {
+            let mut iotab = &record.Data[..];
+            println!(
+                "iota: {}",
+                read_nbt(&mut iotab, Flavor::Uncompressed)
+                    .unwrap()
+                    .0
+                    .to_snbt()
+            )
+        }
     }
 }
 
