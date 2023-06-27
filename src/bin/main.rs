@@ -73,7 +73,7 @@ async fn main() {
 
     loop {
         let (stream, _) = tcp.accept().await.unwrap();
-        tokio::spawn(async move { handle_conn(stream).await });
+        tokio::spawn(async move { handle_conn(stream).await; });
     }
 }
 
@@ -211,11 +211,12 @@ async fn handle_conn(mut stream: TcpStream) {
                                     Some(nbt) => match tp.pattern() {
                                         None => why_is_a_field_empty(&mut responses),
                                         Some(pat) => {
-                                            let mut rng = rand::thread_rng();
-                                            let mut password = [0u8; 255];
-                                            rng.fill(&mut password);
+                                            let mut password = [0u8;255];
+                                            {
+                                                let mut rng = rand::thread_rng();
+                                                rng.fill(&mut password);
+                                            }
                                             let con = DB_CONNECTION.get().unwrap().blocking_lock();
-
                                             match query!("INSERT INTO HexDataStorage (Pattern, Data, Password, Deletion) VALUES (?,?,?,?)",
                                                     pat,&nbt.bytes()[..],&password[..],time::OffsetDateTime::now_utc() + time::Duration::HOUR
                                             ).execute(&*con).await {
