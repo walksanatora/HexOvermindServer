@@ -3,7 +3,7 @@ namespace HexFlatbuffer;
 
 //why cant I have the [byte] be a specific size in tables **why**
 struct FlatbufferMoment {
-    d: [byte:255];
+    d: [ubyte:255];
 }
 
 //all our packet types
@@ -11,7 +11,7 @@ struct FlatbufferMoment {
 //Put data in the server
 table TryPut {//C2S
     pattern: string;
-    nbt: [byte];
+    nbt: [ubyte];
 }
 table PutSuccess {//S2C
     password: FlatbufferMoment;
@@ -22,7 +22,7 @@ table TryGet {//C2S
     pattern: string;
 }
 table GetSuccess {//S2C
-    nbt: [byte];
+    nbt: [ubyte];
 }
 
 //Delete Data from server

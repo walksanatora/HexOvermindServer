@@ -202,20 +202,20 @@ pub mod hex_flatbuffer {
 
     impl<'a> FlatbufferMoment {
         #[allow(clippy::too_many_arguments)]
-        pub fn new(d: &[i8; 255]) -> Self {
+        pub fn new(d: &[u8; 255]) -> Self {
             let mut s = Self([0; 255]);
             s.set_d(d);
             s
         }
 
-        pub fn d(&'a self) -> flatbuffers::Array<'a, i8, 255> {
+        pub fn d(&'a self) -> flatbuffers::Array<'a, u8, 255> {
             // Safety:
             // Created from a valid Table for this object
             // Which contains a valid array in this slot
             unsafe { flatbuffers::Array::follow(&self.0, 0) }
         }
 
-        pub fn set_d(&mut self, items: &[i8; 255]) {
+        pub fn set_d(&mut self, items: &[u8; 255]) {
             // Safety:
             // Created from a valid Table for this object
             // Which contains a valid array in this slot
@@ -274,13 +274,13 @@ pub mod hex_flatbuffer {
             }
         }
         #[inline]
-        pub fn nbt(&self) -> Option<flatbuffers::Vector<'a, i8>> {
+        pub fn nbt(&self) -> Option<flatbuffers::Vector<'a, u8>> {
             // Safety:
             // Created from valid Table for this object
             // which contains a valid value in this slot
             unsafe {
                 self._tab
-                    .get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, i8>>>(
+                    .get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, u8>>>(
                         TryPut::VT_NBT,
                         None,
                     )
@@ -301,7 +301,7 @@ pub mod hex_flatbuffer {
                     Self::VT_PATTERN,
                     false,
                 )?
-                .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, i8>>>(
+                .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, u8>>>(
                     "nbt",
                     Self::VT_NBT,
                     false,
@@ -312,7 +312,7 @@ pub mod hex_flatbuffer {
     }
     pub struct TryPutArgs<'a> {
         pub pattern: Option<flatbuffers::WIPOffset<&'a str>>,
-        pub nbt: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, i8>>>,
+        pub nbt: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, u8>>>,
     }
     impl<'a> Default for TryPutArgs<'a> {
         #[inline]
@@ -335,7 +335,7 @@ pub mod hex_flatbuffer {
                 .push_slot_always::<flatbuffers::WIPOffset<_>>(TryPut::VT_PATTERN, pattern);
         }
         #[inline]
-        pub fn add_nbt(&mut self, nbt: flatbuffers::WIPOffset<flatbuffers::Vector<'b, i8>>) {
+        pub fn add_nbt(&mut self, nbt: flatbuffers::WIPOffset<flatbuffers::Vector<'b, u8>>) {
             self.fbb_
                 .push_slot_always::<flatbuffers::WIPOffset<_>>(TryPut::VT_NBT, nbt);
         }
@@ -609,13 +609,13 @@ pub mod hex_flatbuffer {
         }
 
         #[inline]
-        pub fn nbt(&self) -> Option<flatbuffers::Vector<'a, i8>> {
+        pub fn nbt(&self) -> Option<flatbuffers::Vector<'a, u8>> {
             // Safety:
             // Created from valid Table for this object
             // which contains a valid value in this slot
             unsafe {
                 self._tab
-                    .get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, i8>>>(
+                    .get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, u8>>>(
                         GetSuccess::VT_NBT,
                         None,
                     )
@@ -631,7 +631,7 @@ pub mod hex_flatbuffer {
         ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
             use self::flatbuffers::Verifiable;
             v.visit_table(pos)?
-                .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, i8>>>(
+                .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, u8>>>(
                     "nbt",
                     Self::VT_NBT,
                     false,
@@ -641,7 +641,7 @@ pub mod hex_flatbuffer {
         }
     }
     pub struct GetSuccessArgs<'a> {
-        pub nbt: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, i8>>>,
+        pub nbt: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, u8>>>,
     }
     impl<'a> Default for GetSuccessArgs<'a> {
         #[inline]
@@ -656,7 +656,7 @@ pub mod hex_flatbuffer {
     }
     impl<'a: 'b, 'b> GetSuccessBuilder<'a, 'b> {
         #[inline]
-        pub fn add_nbt(&mut self, nbt: flatbuffers::WIPOffset<flatbuffers::Vector<'b, i8>>) {
+        pub fn add_nbt(&mut self, nbt: flatbuffers::WIPOffset<flatbuffers::Vector<'b, u8>>) {
             self.fbb_
                 .push_slot_always::<flatbuffers::WIPOffset<_>>(GetSuccess::VT_NBT, nbt);
         }

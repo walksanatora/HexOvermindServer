@@ -1,12 +1,10 @@
-#![allow(clippy::read_zero_byte_vec)]
-
 #[path = "../flatbuffer.rs"]
 mod flatbuffer;
 #[path = "../util.rs"]
 mod util;
 use flatbuffer::hex_flatbuffer::{
     finish_messages_buffer, DeleteSuccess, DeleteSuccessArgs, ErrorResponse, ErrorResponseArgs,
-    Packet, PacketArgs,
+    GetSuccess, GetSuccessArgs, Packet, PacketArgs,
 };
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
 use tokio::{
@@ -67,7 +65,7 @@ async fn main() {
                 .await
             {
                 Ok(res) => println!("pruned DB {} rows affected", res.rows_affected()),
-                Err(err) => println!("failed the prune command: {}", err),
+                Err(err) => println!("failed the prune DB command: {}", err),
             }
         }
     });
@@ -106,12 +104,13 @@ async fn handle_conn(mut stream: TcpStream) {
     loop {
         buffer.clear();
         let _ = stream
-            .read(&mut buffer)
+            .read_to_end(&mut buffer)
             .await
             .expect("failed to read socket data!");
         match flatbuffer::hex_flatbuffer::root_as_messages(&buffer) {
             Ok(messages) => match messages.packets() {
                 Some(packets) => {
+                    let mut fbb = FlatBufferBuilder::new();
                     let mut responses: Vec<WIPOffset<Packet<'_>>> = vec![];
                     for packet in packets {
                         match packet.data_type() {
@@ -169,7 +168,41 @@ async fn handle_conn(mut stream: TcpStream) {
                                     },
                                 }
                             }
-                            PacketData::TryGet => {}
+                            PacketData::TryGet => {
+                                let tg_packet = packet.data_as_try_get().unwrap();
+                                match tg_packet.pattern() {
+                                    None => why_is_a_field_empty(&mut responses),
+                                    Some(pattern) => {
+                                        let con = DB_CONNECTION.get().unwrap().blocking_lock();
+                                        match query!(
+                                            "SELECT Data FROM HexDataStorage WHERE Pattern = ?;",
+                                            pattern
+                                        )
+                                        .fetch_one(&*con)
+                                        .await
+                                        {
+                                            Ok(res) => {
+                                                let gsargs = GetSuccessArgs {
+                                                    nbt: Some(fbb.create_vector(&res.Data)),
+                                                };
+                                                let pargs = PacketArgs {
+                                                    data_type: PacketData::GetSuccess,
+                                                    data: Some(
+                                                        GetSuccess::create(&mut fbb, &gsargs)
+                                                            .as_union_value(),
+                                                    ),
+                                                };
+                                                responses.push(Packet::create(&mut fbb, &pargs));
+                                            }
+                                            Err(ohno) => make_err_packet(
+                                                &mut responses,
+                                                500,
+                                                ohno.to_string().as_str(),
+                                            ),
+                                        };
+                                    }
+                                }
+                            }
                             PacketData::TryPut => {}
                             PacketData::NONE => why_is_a_field_empty(&mut responses),
                             flatbuffer::hex_flatbuffer::PacketData(8_u8..=u8::MAX) => {
