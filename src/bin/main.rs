@@ -50,7 +50,7 @@ async fn main() {
     )
     .execute(&*con)
     .await
-    .expect("tried to create db table (if it didn't exist)");
+    .expect("tried to create db table (if it didn't exist), something went wrong");
 
     let host_url = env::var("URL").unwrap_or("127.0.0.1:8080".to_owned());
     let tcp = TcpListener::bind(&host_url)
@@ -73,7 +73,9 @@ async fn main() {
 
     loop {
         let (stream, _) = tcp.accept().await.unwrap();
-        tokio::spawn(async move { handle_conn(stream).await; });
+        tokio::spawn(async move {
+            handle_conn(stream).await;
+        });
     }
 }
 
@@ -175,13 +177,14 @@ async fn handle_conn(mut stream: TcpStream) {
                                     None => why_is_a_field_empty(&mut responses),
                                     Some(pattern) => {
                                         let con = DB_CONNECTION.get().unwrap().blocking_lock();
-                                        match query!(
+                                        let q = query!(
                                             "SELECT Data FROM HexDataStorage WHERE Pattern = ?;",
                                             pattern
                                         )
                                         .fetch_one(&*con)
-                                        .await
-                                        {
+                                        .await;
+                                        drop(con);
+                                        match q {
                                             Ok(res) => {
                                                 let gsargs = GetSuccessArgs {
                                                     nbt: Some(fbb.create_vector(&res.Data)),
@@ -211,25 +214,41 @@ async fn handle_conn(mut stream: TcpStream) {
                                     Some(nbt) => match tp.pattern() {
                                         None => why_is_a_field_empty(&mut responses),
                                         Some(pat) => {
-                                            let mut password = [0u8;255];
+                                            let pat = pat
+                                                .chars()
+                                                .filter(|c| "qweasd".contains(*c))
+                                                .collect::<String>();
+                                            let mut password = [0u8; 255];
                                             {
                                                 let mut rng = rand::thread_rng();
                                                 rng.fill(&mut password);
                                             }
                                             let con = DB_CONNECTION.get().unwrap().blocking_lock();
-                                            match query!("INSERT INTO HexDataStorage (Pattern, Data, Password, Deletion) VALUES (?,?,?,?)",
-                                                    pat,&nbt.bytes()[..],&password[..],time::OffsetDateTime::now_utc() + time::Duration::HOUR
-                                            ).execute(&*con).await {
+                                            let q = query!("INSERT INTO HexDataStorage (Pattern, Data, Password, Deletion) VALUES (?,?,?,?)",
+                                                pat,&nbt.bytes()[..],&password[..],time::OffsetDateTime::now_utc() + time::Duration::HOUR
+                                            ).execute(&*con).await;
+                                            drop(con);
+                                            match q {
                                                 Ok(_resp) => {
                                                     let fbmoment = FlatbufferMoment::new(&password);
-                                                    let psargs = PutSuccessArgs {password: Some(&fbmoment)};
-                                                    let pargs = PacketArgs {
-                                                        data_type: PacketData::PutSuccess, 
-                                                        data: Some(PutSuccess::create(&mut fbb,&psargs).as_union_value())
+                                                    let psargs = PutSuccessArgs {
+                                                        password: Some(&fbmoment),
                                                     };
-                                                    responses.push(Packet::create(&mut fbb, &pargs));
+                                                    let pargs = PacketArgs {
+                                                        data_type: PacketData::PutSuccess,
+                                                        data: Some(
+                                                            PutSuccess::create(&mut fbb, &psargs)
+                                                                .as_union_value(),
+                                                        ),
+                                                    };
+                                                    responses
+                                                        .push(Packet::create(&mut fbb, &pargs));
                                                 }
-                                                Err(ohno) => {make_err_packet(&mut responses, 500, &ohno.to_string())}
+                                                Err(ohno) => make_err_packet(
+                                                    &mut responses,
+                                                    500,
+                                                    &ohno.to_string(),
+                                                ),
                                             }
                                         }
                                     },
