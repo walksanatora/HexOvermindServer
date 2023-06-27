@@ -132,7 +132,7 @@ async fn handle_conn(mut stream: TcpStream) {
                             PacketData::TryDelete => {}
                             PacketData::TryGet => {}
                             PacketData::TryPut => {}
-                            PacketData::NONE => why_is_a_field_empty(&mut responses)
+                            PacketData::NONE => why_is_a_field_empty(&mut responses),
                             flatbuffer::hex_flatbuffer::PacketData(8_u8..=u8::MAX) => {
                                 println!("client is sending packet types that dont exist, be very afraid")
                             }
