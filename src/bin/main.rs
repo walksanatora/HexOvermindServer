@@ -4,7 +4,10 @@
 mod flatbuffer;
 #[path = "../util.rs"]
 mod util;
-use flatbuffer::hex_flatbuffer::{finish_messages_buffer, Packet};
+use flatbuffer::hex_flatbuffer::{
+    finish_messages_buffer, DeleteSuccess, DeleteSuccessArgs, ErrorResponse, ErrorResponseArgs,
+    Packet, PacketArgs,
+};
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -17,9 +20,7 @@ use once_cell::sync::OnceCell;
 use sqlx::{mysql::MySqlPool, query, MySql, Pool};
 use std::{env, time::Duration};
 
-use crate::flatbuffer::hex_flatbuffer::{
-    ErrorResponseBuilder, MessagesBuilder, PacketBuilder, PacketData,
-};
+use crate::flatbuffer::hex_flatbuffer::{Messages, MessagesArgs, PacketData};
 
 static DB_CONNECTION: OnceCell<Mutex<Pool<MySql>>> = OnceCell::new();
 
@@ -77,30 +78,27 @@ async fn main() {
     }
 }
 
-fn why_send_s2c_packets_to_server(responses: &mut Vec<WIPOffset<Packet<'_>>>) {
+fn make_err_packet(responses: &mut Vec<WIPOffset<Packet<'_>>>, id: u16, message: &str) {
     let mut fbb = FlatBufferBuilder::new();
-    let mut fbb1 = fbb.clone();
-    let msg = fbb.create_string("do not send s2c packets to the server");
-    let mut err_packet = PacketBuilder::new(&mut fbb);
-    err_packet.add_data_type(PacketData::ErrorResponse);
-    let mut err_data = ErrorResponseBuilder::new(&mut fbb1);
-    err_data.add_id(400);
-    err_data.add_other(msg);
-    err_packet.add_data(err_data.finish().as_union_value());
-    responses.push(err_packet.finish())
+    let err_datum = ErrorResponseArgs {
+        id,
+        other: Some(fbb.create_string(message)),
+    };
+    let err_data = ErrorResponse::create(&mut fbb, &err_datum);
+    let packet_data = PacketArgs {
+        data_type: PacketData::ErrorResponse,
+        data: Some(err_data.as_union_value()),
+    };
+    let err_packet = Packet::create(&mut fbb, &packet_data);
+    responses.push(err_packet);
+}
+
+fn why_send_s2c_packets_to_server(responses: &mut Vec<WIPOffset<Packet<'_>>>) {
+    make_err_packet(responses, 400, "do not send s2c packets to the server");
 }
 
 fn why_is_a_field_empty(responses: &mut Vec<WIPOffset<Packet<'_>>>) {
-    let mut fbb = FlatBufferBuilder::new();
-    let mut fbb1 = fbb.clone();
-    let msg = fbb.create_string("please make sure to fill all fields");
-    let mut err_packet = PacketBuilder::new(&mut fbb);
-    err_packet.add_data_type(PacketData::ErrorResponse);
-    let mut err_data = ErrorResponseBuilder::new(&mut fbb1);
-    err_data.add_id(400);
-    err_data.add_other(msg);
-    err_packet.add_data(err_data.finish().as_union_value());
-    responses.push(err_packet.finish())
+    make_err_packet(responses, 400, "please make sure to fill all fields");
 }
 
 async fn handle_conn(mut stream: TcpStream) {
@@ -129,7 +127,50 @@ async fn handle_conn(mut stream: TcpStream) {
                             PacketData::PutSuccess => {
                                 why_send_s2c_packets_to_server(&mut responses)
                             }
-                            PacketData::TryDelete => {}
+                            PacketData::TryDelete => {
+                                let td = packet.data_as_try_delete().unwrap();
+                                match td.password() {
+                                    None => why_is_a_field_empty(&mut responses),
+                                    Some(password) => match td.pattern() {
+                                        None => why_is_a_field_empty(&mut responses),
+                                        Some(pattern) => {
+                                            let pat: String = pattern
+                                                .chars()
+                                                .filter(|c| {
+                                                    vec!['q', 'w', 'e', 'a', 's', 'd'].contains(c)
+                                                })
+                                                .collect();
+                                            let con = DB_CONNECTION.get().unwrap().blocking_lock();
+                                            let res = query!("DELETE FROM HexDataStorage WHERE Pattern = ? AND Password = ?;",
+                                                pat,&password.0[..]
+                                            ).execute(&*con).await;
+                                            drop(con);
+                                            match res {
+                                                Ok(_res) => {
+                                                    let mut fbb = FlatBufferBuilder::new();
+                                                    let dsa = DeleteSuccessArgs::default();
+                                                    let packet_args = PacketArgs {
+                                                        data_type: PacketData::DeleteSuccess,
+                                                        data: Some(
+                                                            DeleteSuccess::create(&mut fbb, &dsa)
+                                                                .as_union_value(),
+                                                        ),
+                                                    };
+                                                    responses.push(Packet::create(
+                                                        &mut fbb,
+                                                        &packet_args,
+                                                    ));
+                                                }
+                                                Err(ohno) => make_err_packet(
+                                                    &mut responses,
+                                                    500,
+                                                    ohno.to_string().as_str(),
+                                                ),
+                                            }
+                                        }
+                                    },
+                                }
+                            }
                             PacketData::TryGet => {}
                             PacketData::TryPut => {}
                             PacketData::NONE => why_is_a_field_empty(&mut responses),
@@ -139,14 +180,13 @@ async fn handle_conn(mut stream: TcpStream) {
                         }
                     }
                     let mut fbb = FlatBufferBuilder::new();
-                    let mut fbb2 = FlatBufferBuilder::new();
-                    let packets_fbb = fbb.create_vector(&responses);
-                    let mut messages = MessagesBuilder::new(&mut fbb);
-                    messages.add_packets(packets_fbb);
-                    messages.add_version(1);
-                    let wip = messages.finish();
-                    finish_messages_buffer(&mut fbb2, wip);
-                    let finished = fbb2.finished_data();
+                    let margs = MessagesArgs {
+                        version: 1,
+                        packets: Some(fbb.create_vector(&responses)),
+                    };
+                    let message = Messages::create(&mut fbb, &margs);
+                    finish_messages_buffer(&mut fbb, message);
+                    let finished = fbb.finished_data();
                     let _ = stream.write(finished).await;
                 }
                 None => {
@@ -154,25 +194,18 @@ async fn handle_conn(mut stream: TcpStream) {
                 }
             },
             Err(invalid) => {
-                println!("recieved invalid packet! {}", invalid);
                 let mut fbb = FlatBufferBuilder::new();
-                let mut fbb1 = fbb.clone();
-                let mut fbb2 = fbb.clone();
-                let mut fbb3 = fbb.clone();
-                let mut fbb4 = fbb.clone();
-                let mut builder = MessagesBuilder::new(&mut fbb);
-                builder.add_version(1);
-                let mut err_packet = PacketBuilder::new(&mut fbb1);
-                err_packet.add_data_type(PacketData::ErrorResponse);
-                let mut err_resp = ErrorResponseBuilder::new(&mut fbb2);
-                err_resp.add_id(400);
-                err_resp.add_other(fbb3.create_string("invalid flatbuffer"));
-                err_packet.add_data(err_resp.finish().as_union_value());
-                let packets = [err_packet.finish()];
-                builder.add_packets(fbb3.create_vector(&packets));
-                let bytes = builder.finish();
-                finish_messages_buffer(&mut fbb4, bytes);
-                let _ = stream.write(fbb4.finished_data()).await;
+                let mut packets = vec![];
+                make_err_packet(&mut packets, 400, "invalid flatbuffer");
+                let encoded_packets = fbb.create_vector(&packets);
+                let margs = MessagesArgs {
+                    version: 1,
+                    packets: Some(encoded_packets),
+                };
+                let message = Messages::create(&mut fbb, &margs);
+                println!("recieved invalid packet! {}", invalid);
+                finish_messages_buffer(&mut fbb, message);
+                let _ = stream.write(fbb.finished_data()).await;
             }
         }
     }
