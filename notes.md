@@ -27,3 +27,6 @@
 
 # overmind server sided configs
 time till "death" -> how long untill a iota gets deleted from it's creation time, currently hard coded to 1 hour
+
+TODO: setup filtering for patterns, prepared statments should protect from NBT-based injection
+filtered patterns are *only* 256 chars long and *only* consist of `qweasd`

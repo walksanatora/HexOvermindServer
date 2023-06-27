@@ -1,8 +1,5 @@
 
-enum Direction: byte {
-    Server2Client,
-    Client2Server
-}
+namespace HexFlatbuffer;
 
 //why cant I have the [byte] be a specific size in tables **why**
 struct FlatbufferMoment {
@@ -29,11 +26,11 @@ table GetSuccess {//S2C
 }
 
 //Delete Data from server
-table TryDelete {
+table TryDelete {//C2S
     pattern: string;
     password: FlatbufferMoment;
 }
-table DeleteSuccess {}
+table DeleteSuccess {} //it will either return this, or be a error
 
 
 //Failed to process interaction
@@ -51,7 +48,6 @@ union PacketData {
 }
 
 table Packet {
-    direction: Direction;
     data: PacketData;
 }
 

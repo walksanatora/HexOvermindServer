@@ -9,6 +9,8 @@ edition = "2021"
 base64 = "0.21.2"
 dotenv = "0.15.0"
 flatbuffers = "23.5.26"
+lazy_static = "1.4.0"
+once_cell = { version = "1.18.0", features = ["std"] }
 quartz_nbt = "0.2.8"
 rand = { version = "0.8.5", features = ["min_const_gen"] }
 sqlx = { version = "0.6.3", features = ["runtime-tokio-native-tls", "mysql", "macros", "time"] }

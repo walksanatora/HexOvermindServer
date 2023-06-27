@@ -462,6 +462,8 @@ dependencies = [
  "base64",
  "dotenv",
  "flatbuffers",
+ "lazy_static",
+ "once_cell",
  "quartz_nbt",
  "rand",
  "sqlx",
