@@ -4,9 +4,10 @@ mod flatbuffer;
 mod util;
 use flatbuffer::hex_flatbuffer::{
     finish_messages_buffer, DeleteSuccess, DeleteSuccessArgs, ErrorResponse, ErrorResponseArgs,
-    GetSuccess, GetSuccessArgs, Packet, PacketArgs,
+    FlatbufferMoment, GetSuccess, GetSuccessArgs, Packet, PacketArgs, PutSuccess, PutSuccessArgs,
 };
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
+use rand::Rng;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -203,7 +204,36 @@ async fn handle_conn(mut stream: TcpStream) {
                                     }
                                 }
                             }
-                            PacketData::TryPut => {}
+                            PacketData::TryPut => {
+                                let tp = packet.data_as_try_put().unwrap();
+                                match tp.nbt() {
+                                    None => why_is_a_field_empty(&mut responses),
+                                    Some(nbt) => match tp.pattern() {
+                                        None => why_is_a_field_empty(&mut responses),
+                                        Some(pat) => {
+                                            let mut rng = rand::thread_rng();
+                                            let mut password = [0u8; 255];
+                                            rng.fill(&mut password);
+                                            let con = DB_CONNECTION.get().unwrap().blocking_lock();
+
+                                            match query!("INSERT INTO HexDataStorage (Pattern, Data, Password, Deletion) VALUES (?,?,?,?)",
+                                                    pat,&nbt.bytes()[..],&password[..],time::OffsetDateTime::now_utc() + time::Duration::HOUR
+                                            ).execute(&*con).await {
+                                                Ok(_resp) => {
+                                                    let fbmoment = FlatbufferMoment::new(&password);
+                                                    let psargs = PutSuccessArgs {password: Some(&fbmoment)};
+                                                    let pargs = PacketArgs {
+                                                        data_type: PacketData::PutSuccess, 
+                                                        data: Some(PutSuccess::create(&mut fbb,&psargs).as_union_value())
+                                                    };
+                                                    responses.push(Packet::create(&mut fbb, &pargs));
+                                                }
+                                                Err(ohno) => {make_err_packet(&mut responses, 500, &ohno.to_string())}
+                                            }
+                                        }
+                                    },
+                                }
+                            }
                             PacketData::NONE => why_is_a_field_empty(&mut responses),
                             flatbuffer::hex_flatbuffer::PacketData(8_u8..=u8::MAX) => {
                                 println!("client is sending packet types that dont exist, be very afraid")
