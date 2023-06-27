@@ -136,9 +136,7 @@ async fn handle_conn(mut stream: TcpStream) {
                                         Some(pattern) => {
                                             let pat: String = pattern
                                                 .chars()
-                                                .filter(|c| {
-                                                    vec!['q', 'w', 'e', 'a', 's', 'd'].contains(c)
-                                                })
+                                                .filter(|c| "qweasd".contains(*c))
                                                 .collect();
                                             let con = DB_CONNECTION.get().unwrap().blocking_lock();
                                             let res = query!("DELETE FROM HexDataStorage WHERE Pattern = ? AND Password = ?;",
