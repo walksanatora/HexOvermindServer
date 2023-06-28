@@ -57,8 +57,9 @@ async fn main() {
     buff.push(0x0);
     println!("trying to send `{}` `{}`", pat, rand_iota);
     let _ = tcp.write(&buff).await.unwrap();
-    let mut b = vec![];
-    println!("reading!");
-    let _ = tcp.read_to_end(&mut b).await;
+    let mut b = Vec::with_capacity(2048);
+    b.fill(0);
+    println!("reading! {}", &buff.len());
+    let _ = tcp.read(&mut b[..]).await;
     println!("tcp {:?}", root_as_messages(&b));
 }
