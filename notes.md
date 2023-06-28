@@ -1,4 +1,15 @@
 # client server sided configs
+patterns:
+
+Tara's Purification<br>
+Future -> Bool #has the future exited successfully<br>
+Tara's Purification II<br>
+Future -> \[Any] #the result of the future (if it exited successfully)<br>
+
+Future is a Pointer into a List<Pair<Option<List<Iota\>,UUID\>\>\><br>
+Future has a Index into the TOP list<br>
+and a UUID that must match (otherwise it becomes invalid)
+
 - global_cordinator 
     - string|false
     - the global cordination server to use, false to only use local storage
@@ -28,5 +39,3 @@
 # overmind server sided configs
 time till "death" -> how long untill a iota gets deleted from it's creation time, currently hard coded to 1 hour
 
-TODO: setup filtering for patterns, prepared statments should protect from NBT-based injection
-filtered patterns are *only* 256 chars long and *only* consist of `qweasd`

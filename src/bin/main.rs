@@ -25,6 +25,7 @@ static DB_CONNECTION: OnceCell<Mutex<Pool<MySql>>> = OnceCell::new();
 
 #[tokio::main]
 async fn main() {
+    println!("starting server!");
     //Setup of DB and other
     dotenv().ok();
     let db_url =
@@ -36,7 +37,8 @@ async fn main() {
                 .unwrap_or_else(|_| panic!("failed to connect to db {}", db_url)),
         ))
         .unwrap();
-    let con = DB_CONNECTION.get().unwrap().blocking_lock();
+    println!("db connected");
+    let con = DB_CONNECTION.get().unwrap().lock().await;
 
     query!(
         "
@@ -51,16 +53,17 @@ async fn main() {
     .execute(&*con)
     .await
     .expect("tried to create db table (if it didn't exist), something went wrong");
-
+    println!("table setup");
     let host_url = env::var("URL").unwrap_or("127.0.0.1:8080".to_owned());
     let tcp = TcpListener::bind(&host_url)
         .await
         .expect("failed to bind URL for hosting?");
-
+    println!("tcp binded");
     tokio::spawn(async move {
         loop {
+            println!("running a prune");
             std::thread::sleep(Duration::from_secs(60 * 10)); //every 10 minutes we run a DB purge
-            let con = DB_CONNECTION.get().unwrap().blocking_lock();
+            let con = DB_CONNECTION.get().unwrap().lock().await;
             match query!("DELETE FROM HexDataStorage WHERE Deletion < NOW()")
                 .execute(&*con)
                 .await
@@ -74,6 +77,7 @@ async fn main() {
     loop {
         let (stream, _) = tcp.accept().await.unwrap();
         tokio::spawn(async move {
+            println!("spawn connection");
             handle_conn(stream).await;
         });
     }
@@ -106,15 +110,18 @@ async fn handle_conn(mut stream: TcpStream) {
     let mut buffer = vec![];
     loop {
         buffer.clear();
+        println!("awaiting");
         let _ = stream
             .read_to_end(&mut buffer)
             .await
             .expect("failed to read socket data!");
+        println!("read");
         match flatbuffer::hex_flatbuffer::root_as_messages(&buffer) {
             Ok(messages) => match messages.packets() {
                 Some(packets) => {
                     let mut fbb = FlatBufferBuilder::new();
                     let mut responses: Vec<WIPOffset<Packet<'_>>> = vec![];
+                    println!("iter packets");
                     for packet in packets {
                         match packet.data_type() {
                             PacketData::DeleteSuccess => {
@@ -140,7 +147,7 @@ async fn handle_conn(mut stream: TcpStream) {
                                                 .chars()
                                                 .filter(|c| "qweasd".contains(*c))
                                                 .collect();
-                                            let con = DB_CONNECTION.get().unwrap().blocking_lock();
+                                            let con = DB_CONNECTION.get().unwrap().lock().await;
                                             let res = query!("DELETE FROM HexDataStorage WHERE Pattern = ? AND Password = ?;",
                                                 pat,&password.0[..]
                                             ).execute(&*con).await;
@@ -176,7 +183,7 @@ async fn handle_conn(mut stream: TcpStream) {
                                 match tg_packet.pattern() {
                                     None => why_is_a_field_empty(&mut responses),
                                     Some(pattern) => {
-                                        let con = DB_CONNECTION.get().unwrap().blocking_lock();
+                                        let con = DB_CONNECTION.get().unwrap().lock().await;
                                         let q = query!(
                                             "SELECT Data FROM HexDataStorage WHERE Pattern = ?;",
                                             pattern
@@ -223,7 +230,7 @@ async fn handle_conn(mut stream: TcpStream) {
                                                 let mut rng = rand::thread_rng();
                                                 rng.fill(&mut password);
                                             }
-                                            let con = DB_CONNECTION.get().unwrap().blocking_lock();
+                                            let con = DB_CONNECTION.get().unwrap().lock().await;
                                             let q = query!("INSERT INTO HexDataStorage (Pattern, Data, Password, Deletion) VALUES (?,?,?,?)",
                                                 pat,&nbt.bytes()[..],&password[..],time::OffsetDateTime::now_utc() + time::Duration::HOUR
                                             ).execute(&*con).await;
@@ -256,7 +263,8 @@ async fn handle_conn(mut stream: TcpStream) {
                             }
                             PacketData::NONE => why_is_a_field_empty(&mut responses),
                             flatbuffer::hex_flatbuffer::PacketData(8_u8..=u8::MAX) => {
-                                println!("client is sending packet types that dont exist, be very afraid")
+                                println!("client is sending packet types that dont exist, be very afraid");
+                                make_err_packet(&mut responses, 400, "request type not supported")
                             }
                         }
                     }
@@ -268,6 +276,7 @@ async fn handle_conn(mut stream: TcpStream) {
                     let message = Messages::create(&mut fbb, &margs);
                     finish_messages_buffer(&mut fbb, message);
                     let finished = fbb.finished_data();
+                    println!("sending");
                     let _ = stream.write(finished).await;
                 }
                 None => {
