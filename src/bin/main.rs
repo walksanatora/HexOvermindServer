@@ -17,7 +17,7 @@ use tokio::{
 use dotenv::dotenv;
 use once_cell::sync::OnceCell;
 use sqlx::{mysql::MySqlPool, query, MySql, Pool};
-use std::{env, time::Duration};
+use std::{env, thread, time::Duration};
 
 use crate::flatbuffer::hex_flatbuffer::{Messages, MessagesArgs, PacketData};
 
@@ -107,15 +107,16 @@ fn why_is_a_field_empty(responses: &mut Vec<WIPOffset<Packet<'_>>>) {
 }
 
 async fn handle_conn(mut stream: TcpStream) {
-    let mut buffer = vec![];
+    let mut buffer = Vec::with_capacity(2048);
     loop {
-        buffer.clear();
-        println!("awaiting");
-        let _ = stream
-            .read_to_end(&mut buffer)
-            .await
-            .expect("failed to read socket data!");
+        buffer.fill(0);
+        let bytes = stream.read(&mut buffer[..]).await;
+        println!("read {:?} bytes", bytes);
         println!("read");
+        if let Ok(0) = bytes {
+            thread::sleep(Duration::from_secs(1));
+            continue;
+        }
         match flatbuffer::hex_flatbuffer::root_as_messages(&buffer) {
             Ok(messages) => match messages.packets() {
                 Some(packets) => {
@@ -293,7 +294,7 @@ async fn handle_conn(mut stream: TcpStream) {
                     packets: Some(encoded_packets),
                 };
                 let message = Messages::create(&mut fbb, &margs);
-                println!("recieved invalid packet! {}", invalid);
+                //println!("recieved invalid packet! {}", invalid);
                 finish_messages_buffer(&mut fbb, message);
                 let _ = stream.write(fbb.finished_data()).await;
             }
