@@ -21,6 +21,17 @@ pub fn generate_random_sig() -> String {
 }
 
 pub fn generate_random_iota() -> NbtCompound {
+    let mut tag = NbtCompound::new();
+    let mut data = NbtCompound::new();
+    data.insert("name", "{\"text\":\"walksanator\"}");
+    data.insert("uuid", vec![1583201733, 245647309, -1159122008, 372905589]);
+    tag.insert("hexcasting:data", data);
+    tag.insert("hexcasting:type", "hexcasting:entity");
+    tag
+}
+
+/*
+pub fn generate_random_iota() -> NbtCompound {
     let mut rng = rand::thread_rng();
     let result: u8 = rng.gen_range(1..=100);
     let mut tag = NbtCompound::new();
@@ -67,82 +78,108 @@ pub fn generate_random_iota() -> NbtCompound {
     }
     tag
 }
+*/
 
-pub fn sanatize_nbt(tag: &NbtTag) -> NbtTag {
-    match tag {
-        NbtTag::Compound(cta) => {
-            NbtTag::Compound(
-                if let Ok(iota_type) = cta.get::<_, &str>("hexcasting:type") {
-                    let mut ct = NbtCompound::new();
-                    match iota_type {
-                        "hexcasting:list" => {
-                            //this can contain other iotas so we gotta sanatize them
-                            let res = cta.get::<_, &NbtList>("hexcasting:data");
-                            if let Ok(tag) = res {
-                                let mut new_list = NbtList::new();
-                                for iota in tag.iter() {
-                                    new_list.push(sanatize_nbt(iota));
-                                }
+#[derive(Default, Debug)]
+pub struct SanatizedNBTResult {
+    pub consumed_entity: bool,
+    pub resultant_compound: NbtCompound,
+}
 
-                                ct.insert("hexcasting:data", new_list);
-                                ct.insert("hexcasting:type", "hexcasting:list")
-                            } else {
-                                println!("somehow the data is not a list!!! {}", res.unwrap_err());
-                            } //if data is for some reason not a list, ¯\_(ツ)_/¯ Not my problem
+impl SanatizedNBTResult {
+    fn merge(&mut self, other: SanatizedNBTResult) {
+        self.consumed_entity = self.consumed_entity || other.consumed_entity
+    }
+}
+
+pub fn sanatize_nbt(cta: NbtCompound) -> SanatizedNBTResult {
+    if let Ok(iota_type) = cta.get::<_, &str>("hexcasting:type") {
+        let mut ct = NbtCompound::new();
+        let mut sanatized_entity = false;
+        match iota_type {
+            "hexcasting:list" => {
+                //this can contain other iotas so we gotta sanatize them
+                let res = cta.get::<_, &NbtList>("hexcasting:data");
+                if let Ok(tag) = res {
+                    let mut new_list = NbtList::new();
+                    for iota in tag.iter() {
+                        if let NbtTag::Compound(ctag) = iota {
+                            let san = sanatize_nbt(ctag.clone());
+                            if san.consumed_entity {
+                                sanatized_entity = true
+                            }
+                            new_list.push(NbtTag::Compound(san.resultant_compound));
+                        } else {
+                            new_list.push(iota.clone());
                         }
-                        "hexcasting:entity" => {
-                            ct.insert("hexcasting:type", "hexcasting:garbage");
-                            ct.insert("hexcasting:data", NbtCompound::new());
-                        } //the type we want to specifically fuck over
-                        "hextweaks:dict" => {
-                            if let Ok(kv) = cta.get::<_, &NbtCompound>("hexcasting:data") {
-                                let mut sanatized_keys = NbtList::new();
-                                let mut sanatized_values = NbtList::new();
-                                if let Ok(keys) = kv.get::<_, &NbtList>("k") {
-                                    for iota in keys.iter() {
-                                        sanatized_keys.push(
-                                            if let NbtTag::Compound(datum) = iota {
-                                                sanatize_nbt(&NbtTag::Compound(datum.clone()))
-                                            } else {
-                                                iota.clone()
-                                            },
-                                        );
-                                    }
-                                };
-                                if let Ok(keys) = kv.get::<_, &NbtList>("v") {
-                                    for iota in keys.iter() {
-                                        sanatized_values.push(
-                                            if let NbtTag::Compound(datum) = iota {
-                                                sanatize_nbt(&NbtTag::Compound(datum.clone()))
-                                            } else {
-                                                iota.clone()
-                                            },
-                                        );
-                                    }
-                                };
-                                let mut new_kv = NbtCompound::new();
-                                new_kv.insert("k", sanatized_keys);
-                                new_kv.insert("v", sanatized_values);
-                                ct.insert("hexcasting:data", new_kv);
-                                ct.insert("hexcasting:type", "hextweaks:dict");
-                            }; //if data is for some reason not a compound, ¯\_(ツ)_/¯ Not my problem
-                        }
-                        other => {
-                            #[cfg(debug_assertions)]
-                            println!("iota type {} does not have any setup sanatization", other);
-                            ct.insert("hexcasing:type", other);
-                            ct.insert(
-                                "hexcasting:data",
-                                cta.get::<_, &NbtTag>("hexcasting:data").unwrap().clone(),
-                            );
-                        } //not a type that we filter for/can hold other types
-                    };
-                    ct
+                    }
+
+                    ct.insert("hexcasting:data", new_list);
+                    ct.insert("hexcasting:type", "hexcasting:list")
                 } else {
-                    cta.clone()
-                },
-            )
+                    println!("somehow the data is not a list!!! {}", res.unwrap_err());
+                } //if data is for some reason not a list, ¯\_(ツ)_/¯ Not my problem
+            }
+            "hexcasting:entity" => {
+                sanatized_entity = true;
+                ct.insert("hexcasting:type", "hexcasting:garbage");
+                ct.insert("hexcasting:data", NbtCompound::new());
+            } //the type we want to specifically fuck over
+            "hextweaks:dict" => {
+                if let Ok(kv) = cta.get::<_, &NbtCompound>("hexcasting:data") {
+                    let mut sanatized_keys = NbtList::new();
+                    let mut sanatized_values = NbtList::new();
+                    if let Ok(keys) = kv.get::<_, &NbtList>("k") {
+                        for iota in keys.iter() {
+                            sanatized_keys.push(if let NbtTag::Compound(datum) = iota {
+                                let san = sanatize_nbt(datum.clone());
+                                if san.consumed_entity {
+                                    sanatized_entity = true
+                                };
+                                NbtTag::Compound(san.resultant_compound)
+                            } else {
+                                iota.clone()
+                            });
+                        }
+                    };
+                    if let Ok(keys) = kv.get::<_, &NbtList>("v") {
+                        for iota in keys.iter() {
+                            sanatized_values.push(if let NbtTag::Compound(datum) = iota {
+                                let san = sanatize_nbt(datum.clone());
+                                if san.consumed_entity {
+                                    sanatized_entity = true
+                                };
+                                NbtTag::Compound(san.resultant_compound)
+                            } else {
+                                iota.clone()
+                            });
+                        }
+                    };
+                    let mut new_kv = NbtCompound::new();
+                    new_kv.insert("k", sanatized_keys);
+                    new_kv.insert("v", sanatized_values);
+                    ct.insert("hexcasting:data", new_kv);
+                    ct.insert("hexcasting:type", "hextweaks:dict");
+                }; //if data is for some reason not a compound, ¯\_(ツ)_/¯ Not my problem
+            }
+            other => {
+                #[cfg(debug_assertions)]
+                println!("iota type {} does not have any setup sanatization", other);
+                ct.insert("hexcasing:type", other);
+                ct.insert(
+                    "hexcasting:data",
+                    cta.get::<_, &NbtTag>("hexcasting:data").unwrap().clone(),
+                );
+            } //not a type that we filter for/can hold other types
+        };
+        SanatizedNBTResult {
+            consumed_entity: sanatized_entity,
+            resultant_compound: ct,
         }
-        x => x.clone(),
+    } else {
+        SanatizedNBTResult {
+            consumed_entity: false,
+            resultant_compound: cta,
+        }
     }
 }

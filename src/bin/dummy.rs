@@ -53,13 +53,15 @@ async fn main() {
     let mut tcp = TcpStream::connect(env::var("URL").unwrap_or("127.0.0.1:8080".to_owned()))
         .await
         .unwrap();
-    let mut buff: Vec<u8> = fbb.finished_data().into();
-    buff.push(0x0);
+    let buff = fbb.finished_data();
     println!("trying to send `{}` `{}`", pat, rand_iota);
-    let _ = tcp.write(&buff).await.unwrap();
-    let mut b = Vec::with_capacity(2048);
-    b.fill(0);
-    println!("reading! {}", &buff.len());
-    let _ = tcp.read(&mut b[..]).await;
-    println!("tcp {:?}", root_as_messages(&b));
+    let _ = tcp.write(buff).await.unwrap();
+    let mut buffer = vec![];
+    let mut sbuf = [0u8; 1024];
+    while root_as_messages(&buffer).is_err() {
+        let _ = tcp.read(&mut sbuf).await;
+        buffer.extend_from_slice(&sbuf);
+    }
+    println!("tcp {:?}", root_as_messages(&buffer));
+    drop(tcp);
 }

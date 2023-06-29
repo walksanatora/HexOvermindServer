@@ -381,6 +381,7 @@ pub mod hex_flatbuffer {
 
     impl<'a> PutSuccess<'a> {
         pub const VT_PASSWORD: flatbuffers::VOffsetT = 4;
+        pub const VT_SANATIZED_ENTITY: flatbuffers::VOffsetT = 6;
 
         #[inline]
         pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -395,6 +396,7 @@ pub mod hex_flatbuffer {
             if let Some(x) = args.password {
                 builder.add_password(x);
             }
+            builder.add_sanatized_entity(args.sanatized_entity);
             builder.finish()
         }
 
@@ -408,6 +410,17 @@ pub mod hex_flatbuffer {
                     .get::<FlatbufferMoment>(PutSuccess::VT_PASSWORD, None)
             }
         }
+        #[inline]
+        pub fn sanatized_entity(&self) -> bool {
+            // Safety:
+            // Created from valid Table for this object
+            // which contains a valid value in this slot
+            unsafe {
+                self._tab
+                    .get::<bool>(PutSuccess::VT_SANATIZED_ENTITY, Some(false))
+                    .unwrap()
+            }
+        }
     }
 
     impl flatbuffers::Verifiable for PutSuccess<'_> {
@@ -419,17 +432,22 @@ pub mod hex_flatbuffer {
             use self::flatbuffers::Verifiable;
             v.visit_table(pos)?
                 .visit_field::<FlatbufferMoment>("password", Self::VT_PASSWORD, false)?
+                .visit_field::<bool>("sanatized_entity", Self::VT_SANATIZED_ENTITY, false)?
                 .finish();
             Ok(())
         }
     }
     pub struct PutSuccessArgs<'a> {
         pub password: Option<&'a FlatbufferMoment>,
+        pub sanatized_entity: bool,
     }
     impl<'a> Default for PutSuccessArgs<'a> {
         #[inline]
         fn default() -> Self {
-            PutSuccessArgs { password: None }
+            PutSuccessArgs {
+                password: None,
+                sanatized_entity: false,
+            }
         }
     }
 
@@ -442,6 +460,11 @@ pub mod hex_flatbuffer {
         pub fn add_password(&mut self, password: &FlatbufferMoment) {
             self.fbb_
                 .push_slot_always::<&FlatbufferMoment>(PutSuccess::VT_PASSWORD, password);
+        }
+        #[inline]
+        pub fn add_sanatized_entity(&mut self, sanatized_entity: bool) {
+            self.fbb_
+                .push_slot::<bool>(PutSuccess::VT_SANATIZED_ENTITY, sanatized_entity, false);
         }
         #[inline]
         pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a>) -> PutSuccessBuilder<'a, 'b> {
@@ -462,6 +485,7 @@ pub mod hex_flatbuffer {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             let mut ds = f.debug_struct("PutSuccess");
             ds.field("password", &self.password());
+            ds.field("sanatized_entity", &self.sanatized_entity());
             ds.finish()
         }
     }

@@ -15,6 +15,7 @@ table TryPut {//C2S
 }
 table PutSuccess {//S2C
     password: FlatbufferMoment;
+    sanatized_entity: bool;
 }
 
 //Get Data from Server
