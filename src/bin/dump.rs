@@ -3,6 +3,7 @@ use dotenv::dotenv;
 use quartz_nbt::io::{read_nbt, Flavor};
 use sqlx::{query, MySqlPool};
 use std::env;
+use time::UtcOffset;
 
 #[tokio::main]
 async fn main() {
@@ -16,6 +17,7 @@ async fn main() {
         .fetch_all(&con)
         .await
         .expect("failed to query db");
+    let utc = UtcOffset::current_local_offset().unwrap();
     for record in dat.iter() {
         let mut iotab = &record.Data[..];
         println!(
